@@ -1,0 +1,217 @@
+name: Kernel Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'Build variant'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - base
+          - suNext
+          - all
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            bc bison build-essential \
+            curl flex git libssl-dev \
+            python3 rsync unzip cpio \
+            gcc-aarch64-linux-gnu python-is-python3 \
+            gcc-arm-linux-gnueabi zip
+
+      - name: Cache Clang
+        uses: actions/cache@v3
+        id: cache
+        with:
+          path: clang
+          key: clang-r563880c
+
+      - name: Setup Google Clang r563880c
+        run: |
+          if [ ! -d clang/bin ]; then
+            mkdir -p clang
+            curl -L \
+              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r563880c.tar.gz \
+              | tar -xz -C clang
+          fi
+          echo "$PWD/clang/bin" >> $GITHUB_PATH
+
+      - name: Determine Build Variant
+        id: variant
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "variant=${{ github.event.inputs.variant }}" >> $GITHUB_OUTPUT
+          else
+            # Auto-detect based on branch
+            BRANCH="${GITHUB_REF#refs/heads/}"
+            if [ "$BRANCH" == "16" ]; then
+              echo "variant=base" >> $GITHUB_OUTPUT
+            elif [ "$BRANCH" == "16-ksun" ]; then
+              echo "variant=suNext" >> $GITHUB_OUTPUT
+            else
+              echo "variant=all" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Set Build Variables
+        id: build_vars
+        run: |
+          DATE_TIME=$(TZ="Asia/Karachi" date +"%d%m%y-%H%M%S")
+
+          echo "date_time=$DATE_TIME" >> $GITHUB_OUTPUT
+
+          VARIANT="${{ steps.variant.outputs.variant }}"
+          # Determine branches to build
+          if [ "$VARIANT" == "all" ]; then
+            echo "branches=16 16-ksun" >> $GITHUB_OUTPUT
+            echo "variants=base suNext" >> $GITHUB_OUTPUT
+          elif [ "$VARIANT" == "base" ]; then
+            echo "branches=16" >> $GITHUB_OUTPUT
+            echo "variants=base" >> $GITHUB_OUTPUT
+          elif [ "$VARIANT" == "suNext" ]; then
+            echo "branches=16-ksun" >> $GITHUB_OUTPUT
+            echo "variants=suNext" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Clone AnyKernel Template
+        run: |
+          git clone --depth=1 https://github.com/ahmedhanbal/anykernel anykernel-template
+          rm -rf anykernel-template/.git
+
+      - name: Configure Git to Preserve Build Folders
+        run: |
+          # Add anykernel folders to .git/info/exclude so they won't be affected by checkout
+          echo "anykernel-base/" >> .git/info/exclude
+          echo "anykernel-suNext/" >> .git/info/exclude
+          echo "anykernel-template/" >> .git/info/exclude
+
+      - name: Build Kernel (base)
+        if: contains(steps.build_vars.outputs.variants, 'base')
+        run: |
+          set -e
+
+          echo "Building variant: base"
+          git checkout 16
+
+          # Configure
+          make O=out \
+            CC=clang \
+            LD=ld.lld \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            ARCH=arm64 \
+            SUBARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            vendor/spes-perf_defconfig
+
+          # Build
+          make -j$(nproc --all) \
+            O=out \
+            CC=clang \
+            LD=ld.lld \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            ARCH=arm64 \
+            SUBARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LOCALVERSION=-base \
+            Image.gz-dtb dtbo.img
+
+          # Prepare AnyKernel
+          cp -r anykernel-template anykernel-base
+          cp out/arch/arm64/boot/Image.gz-dtb anykernel-base/
+          cp out/arch/arm64/boot/dtbo.img anykernel-base/
+
+          # Patch kernel string
+          sed -i "s/^kernel.string=.*/kernel.string=4.19.325-murali-fork-base/" \
+            anykernel-base/anykernel.sh
+
+      - name: Build Kernel (suNext)
+        if: contains(steps.build_vars.outputs.variants, 'suNext')
+        run: |
+          set -e
+
+          echo "Building variant: suNext"
+          git checkout 16-ksun
+
+          # Configure
+          make O=out \
+            CC=clang \
+            LD=ld.lld \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            ARCH=arm64 \
+            SUBARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            vendor/spes-perf_defconfig
+
+          # Build
+          make -j$(nproc --all) \
+            O=out \
+            CC=clang \
+            LD=ld.lld \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            ARCH=arm64 \
+            SUBARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LOCALVERSION=-suNext \
+            Image.gz-dtb dtbo.img
+
+          # Prepare AnyKernel
+          cp -r anykernel-template anykernel-suNext
+          cp out/arch/arm64/boot/Image.gz-dtb anykernel-suNext/
+          cp out/arch/arm64/boot/dtbo.img anykernel-suNext/
+
+          # Patch kernel string
+          sed -i "s/^kernel.string=.*/kernel.string=4.19.325-murali-fork-suNext/" \
+            anykernel-suNext/anykernel.sh
+
+      - name: Generate timestamp
+        id: timestamp
+        run: echo "time=$(TZ='Asia/Karachi' date +'%d%m%y-%H%M%S')" >> $GITHUB_OUTPUT
+
+      - name: Upload base artifact
+        if: contains(steps.build_vars.outputs.variants, 'base')
+        uses: actions/upload-artifact@v4
+        with:
+          name: murali-fork-base-${{ steps.timestamp.outputs.time }}
+          path: anykernel-base/
+
+      - name: Upload suNext artifact
+        if: contains(steps.build_vars.outputs.variants, 'suNext')
+        uses: actions/upload-artifact@v4
+        with:
+          name: murali-fork-suNext-${{ steps.timestamp.outputs.time }}
+          path: anykernel-suNext/
+
+      - name: Build Summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Built Variants" >> $GITHUB_STEP_SUMMARY
+          if [ -d "anykernel-base" ]; then
+            echo "- ✅ base" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -d "anykernel-suNext" ]; then
+            echo "- ✅ suNext" >> $GITHUB_STEP_SUMMARY
+          fi
