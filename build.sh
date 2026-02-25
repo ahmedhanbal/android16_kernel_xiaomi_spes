@@ -11,6 +11,7 @@ if [ -z "$1" ]; then
   echo "Usage:"
   echo "  ./build.sh base"
   echo "  ./build.sh suNext"
+  echo "  ./build.sh susNext"
   echo "  ./build.sh all"
   exit 1
 fi
@@ -41,8 +42,8 @@ CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 # Variants to build
 # --------------------------
 if [ "$TARGET" == "all" ]; then
-  VARIANTS=("base" "suNext")
-elif [ "$TARGET" == "base" ] || [ "$TARGET" == "suNext" ]; then
+  VARIANTS=("suNext" "susNext" "base")
+elif [ "$TARGET" == "base" ] || [ "$TARGET" == "suNext" ] || [ "$TARGET" == "susNext" ]; then
   VARIANTS=("$TARGET")
 else
   echo "Error: Invalid variant '$TARGET'"
@@ -58,6 +59,7 @@ get_branch() {
   case "$1" in
     base)   echo "16" ;;
     suNext) echo "16-ksun" ;;
+    susNext) echo "16-ksun-susfs" ;;
   esac
 }
 
@@ -82,7 +84,9 @@ for VARIANT in "${VARIANTS[@]}"; do
 
   echo "Switching to branch: $BRANCH"
   git checkout "$BRANCH"
-
+  if [ "$VARIANT" == "base" ]; then
+	rm -rf KernelSU-Next > /dev/null 2>&1
+  fi
   # --------------------------
   # Defconfig
   # --------------------------
@@ -114,7 +118,7 @@ for VARIANT in "${VARIANTS[@]}"; do
   # Patch kernel.string in anykernel.sh
   # --------------------------
   echo "Patching anykernel.sh kernel string..."
-  sed -i "s/^kernel.string=.*/kernel.string=4.19.325-murali-fork-$VARIANT/" \
+  sed -i "s/^kernel.string=.*/kernel.string=murali-fork-$VARIANT/" \
     "$ANYKERNEL_DIR/anykernel.sh"
 
   # --------------------------
