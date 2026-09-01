@@ -39,14 +39,14 @@ jobs:
         id: cache
         with:
           path: clang
-          key: clang-r563880c
+          key: clang-r584948
 
-      - name: Setup Google Clang r563880c
+      - name: Setup Google Clang r584948
         run: |
           if [ ! -d clang/bin ]; then
             mkdir -p clang
             curl -L \
-              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r563880c.tar.gz \
+              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r584948.tar.gz \
               | tar -xz -C clang
           fi
           echo "$PWD/clang/bin" >> $GITHUB_PATH
@@ -61,7 +61,7 @@ jobs:
             BRANCH="${GITHUB_REF#refs/heads/}"
             if [ "$BRANCH" == "16" ]; then
               echo "variant=base" >> $GITHUB_OUTPUT
-            elif [ "$BRANCH" == "16-ksun" ]; then
+            elif [ "$BRANCH" == "16" ]; then
               echo "variant=suNext" >> $GITHUB_OUTPUT
             else
               echo "variant=all" >> $GITHUB_OUTPUT
@@ -107,7 +107,7 @@ jobs:
 
           echo "Building variant: base"
           git checkout 16
-
+          rm drivers/kernelsu
           # Configure
           make O=out \
             CC=clang \
@@ -131,7 +131,7 @@ jobs:
             SUBARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LOCALVERSION=-base \
+            LOCALVERSION=-base KBUILD_BUILD_USER=Github KBUILD_BUILD_HOST=Actions \
             Image.gz-dtb dtbo.img
 
           # Prepare AnyKernel
@@ -140,7 +140,7 @@ jobs:
           cp out/arch/arm64/boot/dtbo.img anykernel-base/
 
           # Patch kernel string
-          sed -i "s/^kernel.string=.*/kernel.string=4.19.325-murali-fork-base/" \
+          sed -i "s/^kernel.string=.*/kernel.string=4.19.325-hanbal-murali-base/" \
             anykernel-base/anykernel.sh
 
       - name: Build Kernel (suNext)
@@ -149,7 +149,8 @@ jobs:
           set -e
 
           echo "Building variant: suNext"
-          git checkout 16-ksun
+          git checkout 16
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
           # Configure
           make O=out \
@@ -174,7 +175,7 @@ jobs:
             SUBARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LOCALVERSION=-suNext \
+            LOCALVERSION=-suNext KBUILD_BUILD_USER=Github KBUILD_BUILD_HOST=Actions \
             Image.gz-dtb dtbo.img
 
           # Prepare AnyKernel
@@ -183,7 +184,7 @@ jobs:
           cp out/arch/arm64/boot/dtbo.img anykernel-suNext/
 
           # Patch kernel string
-          sed -i "s/^kernel.string=.*/kernel.string=4.19.325-murali-fork-suNext/" \
+          sed -i "s/^kernel.string=.*/kernel.string=4.19.325-hanbal-murali-suNext/" \
             anykernel-suNext/anykernel.sh
 
       - name: Generate timestamp
@@ -194,14 +195,14 @@ jobs:
         if: contains(steps.build_vars.outputs.variants, 'base')
         uses: actions/upload-artifact@v4
         with:
-          name: murali-fork-base-${{ steps.timestamp.outputs.time }}
+          name: hanbal-murali-base-${{ steps.timestamp.outputs.time }}
           path: anykernel-base/
 
       - name: Upload suNext artifact
         if: contains(steps.build_vars.outputs.variants, 'suNext')
         uses: actions/upload-artifact@v4
         with:
-          name: murali-fork-suNext-${{ steps.timestamp.outputs.time }}
+          name: hanbal-murali-suNext-${{ steps.timestamp.outputs.time }}
           path: anykernel-suNext/
 
       - name: Build Summary

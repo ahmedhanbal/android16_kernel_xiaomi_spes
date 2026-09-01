@@ -58,7 +58,7 @@ fi
 get_branch() {
   case "$1" in
     base)   echo "16" ;;
-    suNext) echo "16-ksun" ;;
+    suNext) echo "16" ;;
     susNext) echo "16-ksun-susfs" ;;
   esac
 }
@@ -118,13 +118,13 @@ for VARIANT in "${VARIANTS[@]}"; do
   # Patch kernel.string in anykernel.sh
   # --------------------------
   echo "Patching anykernel.sh kernel string..."
-  sed -i "s/^kernel.string=.*/kernel.string=murali-fork-$VARIANT/" \
+  sed -i "s/^kernel.string=.*/kernel.string=hanbal-murali-$VARIANT/" \
     "$ANYKERNEL_DIR/anykernel.sh"
 
   # --------------------------
   # Zip Packaging
   # --------------------------
-  ZIPNAME="murali-fork-${VARIANT}-${DATE_TIME}.zip"
+  ZIPNAME="hanbal-murali-${VARIANT}-${DATE_TIME}.zip"
 
   echo "Creating flashable zip: $ZIPNAME"
 
@@ -140,4 +140,4 @@ done
 echo "========================================="
 echo " Build Finished Successfully"
 echo "========================================="
-ls -lh murali-fork-*-${DATE_TIME}.zip
+ls -lh hanbal-murali-*-${DATE_TIME}.zip
